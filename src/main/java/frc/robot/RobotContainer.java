@@ -11,11 +11,13 @@ package frc.robot;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
+import frc.robot.commands.ActivatePart;
 import frc.robot.commands.AltitudeTarget;
 import frc.robot.commands.LaunchCommand;
 import frc.robot.commands.ThrottleCommand;
 import frc.robot.commands.VelocityTarget;
 import frc.robot.subsystems.RocketSubsystem;
+import frc.robot.util.KSPPartType;
 import frc.robot.util.PIDHelper;
 
 public class RobotContainer {
@@ -40,6 +42,7 @@ public class RobotContainer {
         configureBindings();
 
         // Create a setpoint supplier that scales axis 5 
+		/* 
         rocketSubsystem.setDefaultCommand(
             new VelocityTarget(
                 rocketSubsystem,
@@ -47,12 +50,14 @@ public class RobotContainer {
                 velocityPIDHelper
             )
         );
+		*/
     }
 
 
 	private void configureBindings() {
 		
 		//controller.a().onTrue(new LaunchCommand(rocketSubsystem, 500)); // Target 500m altitude
+		controller.b().onTrue(new ActivatePart(rocketSubsystem, KSPPartType.FAIRING, "payload-fairing", true));
 
 		/* 
 		controller.a().onTrue(

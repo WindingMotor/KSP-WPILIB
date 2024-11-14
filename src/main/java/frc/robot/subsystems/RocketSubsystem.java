@@ -12,6 +12,7 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.krpc.KRPCWrapper;
+import frc.robot.util.KSPPartType;
 
 public class RocketSubsystem extends SubsystemBase {
     private final KRPCWrapper krpc;
@@ -27,6 +28,10 @@ public class RocketSubsystem extends SubsystemBase {
 
     @Override
     public void periodic() {
+
+        krpc.printVesselParts(true);
+
+        
         // Update SmartDashboard with telemetry data if streams are available
         if (krpc != null) {
             SmartDashboard.putNumber("AltitudeM", krpc.getAltitude());
@@ -133,24 +138,16 @@ public class RocketSubsystem extends SubsystemBase {
         }
     }
 
-    /**
-     * Activates the part with the given tag.
-     * @param tag Tag of the part to activate
-     */
-    public void activatePartWithTag(String tag) {
-        if (krpc != null) {
-            krpc.activatePartWithTag(tag);
-        }
+public void activatePartWithTypeAndTag(KSPPartType partType, String tag) {
+    if (krpc != null) {
+        krpc.activatePartWithTypeAndTag(partType, tag, true);
     }
+}
 
-    /**
-     * Deactivates the part with the given tag.
-     * @param tag Tag of the part to deactivate
-     */
-    public void deactivatePartWithTag(String tag) {
-        if (krpc != null) {
-            krpc.deactivatePartWithTag(tag);
-        }
+public void deactivatePartWithTypeAndTag(KSPPartType partType, String tag) {
+    if (krpc != null) {
+        krpc.deactivatePartWithTypeAndTag(partType, tag);
     }
+}
 
 }

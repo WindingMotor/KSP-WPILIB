@@ -10,6 +10,7 @@ package frc.robot.krpc;
 
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.wpilibj.DriverStation;
+import frc.robot.util.KSPPartType;
 import krpc.client.Connection;
 import krpc.client.RPCException;
 import krpc.client.services.SpaceCenter;
@@ -19,6 +20,10 @@ import krpc.client.Stream;
 import krpc.client.StreamException;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 import org.javatuples.Triplet;
 import org.opencv.core.Mat.Tuple3;
@@ -300,55 +305,145 @@ public Translation3d getVelocityVector() {
             return 0.0;
         }
     }
-
-/**
- * Activates all parts with a specific tag.
- * @param tag The tag to search for
- * @return The number of parts activated
- */
-public int activatePartWithTag(String tag) {
-    if (activeVessel == null) {
-        DriverStation.reportError("Cannot activate parts: Active vessel is null.", null);
-        return 0;
-    }
-    
-    try {
-        int activatedCount = 0;
-        // Get the parts collection first
-        SpaceCenter.Parts partsCollection = activeVessel.getParts();
-        // Then get the list of parts with the specified tag
-        java.util.List<SpaceCenter.Part> parts = partsCollection.withTag(tag);
+    public int activatePartWithTypeAndTag(KSPPartType partType, String tag, boolean debug) {
+        if (activeVessel == null) {
+            DriverStation.reportError("Cannot activate parts: Active vessel is null.", null);
+            return 0;
+        }
         
-        for (SpaceCenter.Part part : parts) {
-            // Get all modules for the part
-            java.util.List<SpaceCenter.Module> modules = part.getModules();
+        try {
+            int activatedCount = 0;
+            SpaceCenter.Parts partsCollection = activeVessel.getParts();
+            java.util.List<SpaceCenter.Part> parts = partsCollection.withTag(tag);
             
-            // Find the ModuleAirbrake module
-            for (SpaceCenter.Module module : modules) {
-                if (module.getName().equals("ModuleAirbrake")) {
-                    module.setFieldBool("deploy", true);
-                    activatedCount++;
-                    break;
+            if (parts.isEmpty()) {
+                DriverStation.reportError(
+                    String.format("No parts found with tag '%s'", tag), null);
+                return 0;
+            }
+    
+            for (SpaceCenter.Part part : parts) {
+                try {
+                    java.util.List<SpaceCenter.Module> modules = part.getModules();
+                    
+                    if (debug) {
+                        DriverStation.reportWarning(
+                            String.format("Processing part '%s' with %d modules", 
+                            part.getName(), modules.size()), false);
+                    }
+    
+                    // Find the first matching module
+                    SpaceCenter.Module targetModule = null;
+                    for (SpaceCenter.Module module : modules) {
+                        if (module.getName().equals(partType.getModuleName())) {
+                            targetModule = module;
+                            break;
+                        }
+                    }
+    
+                    if (targetModule == null) {
+                        if (debug) {
+                            StringBuilder moduleList = new StringBuilder("Available modules: ");
+                            for (SpaceCenter.Module module : modules) {
+                                moduleList.append(module.getName()).append(", ");
+                            }
+                            DriverStation.reportWarning(moduleList.toString(), false);
+                        }
+                        continue;
+                    }
+    
+                    // Get available fields first
+                    Map<String, String> fields = targetModule.getFields();
+                    if (debug) {
+                        StringBuilder fieldList = new StringBuilder("Available fields: ");
+                        for (String fieldName : fields.keySet()) {
+                            fieldList.append(fieldName).append(", ");
+                        }
+                        DriverStation.reportWarning(fieldList.toString(), false);
+                    }
+
+                    // Special handling for fairings
+                    if (partType == KSPPartType.FAIRING) {
+                        boolean success = false;
+                        
+                        // Try to find the correct field name from available fields
+                        for (String fieldName : fields.keySet()) {
+                            String fieldLower = fieldName.toLowerCase();
+                            if (fieldLower.contains("deploy") || fieldLower.contains("jettison")) {
+                                try {
+                                    targetModule.setFieldBool(fieldName, true);
+                                    success = true;
+                                    activatedCount++;
+                                    
+                                    // Add time warp workaround for fairings using the correct API
+                                    try {
+                                        // Set physical time warp factor to 1 (lowest setting)
+                                        spaceCenter.setPhysicsWarpFactor(1);
+                                        Thread.sleep(100); // Brief pause
+                                        spaceCenter.setPhysicsWarpFactor(0); // Return to normal time
+                                    } catch (Exception warpEx) {
+                                        if (debug) {
+                                            DriverStation.reportWarning(
+                                                "Failed to apply time warp workaround: " + warpEx.getMessage(), 
+                                                false);
+                                        }
+                                    }
+                                    
+                                    break;
+                                } catch (Exception e) {
+                                    if (debug) {
+                                        DriverStation.reportWarning(
+                                            String.format("Failed to set field '%s': %s", 
+                                            fieldName, e.getMessage()), false);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!success) {
+                            DriverStation.reportWarning(
+                                "Could not find valid deploy/jettison field for fairing", false);
+                        }
+                    } else {
+                        // Handle non-fairing parts
+                        String actionField = partType.getActionField();
+                        if (fields.containsKey(actionField)) {
+                            targetModule.setFieldBool(actionField, true);
+                            activatedCount++;
+                        } else {
+                            DriverStation.reportWarning(
+                                String.format("Action field '%s' not found in available fields", 
+                                actionField), false);
+                        }
+                    }
+    
+                } catch (Exception e) {
+                    DriverStation.reportError("Failed to process part: " + e.getMessage(), false);
                 }
             }
+            
+            return activatedCount;
+    
+        } catch (Exception e) {
+            DriverStation.reportError(
+                String.format("Failed to activate parts with tag %s: %s", 
+                tag, e.getMessage()), false);
+            return 0;
         }
-        
-        if (kDebugging) {
-            DriverStation.reportWarning("Activated " + activatedCount + " parts with tag: " + tag, false);
-        }
-        return activatedCount;
-    } catch (Exception e) {
-        DriverStation.reportError("Failed to activate parts with tag " + tag + ": " + e.getMessage(), e.getStackTrace());
-        return 0;
     }
-}
+    
+    // Overloaded method to maintain backward compatibility
+    public int activatePartWithTypeAndTag(KSPPartType partType, String tag) {
+        return activatePartWithTypeAndTag(partType, tag, false);
+    }
 
 /**
- * Deactivates all parts with a specific tag.
+ * Deactivates a part with the specified type and tag.
+ * @param partType The type of part to deactivate
  * @param tag The tag to search for
  * @return The number of parts deactivated
  */
-public int deactivatePartWithTag(String tag) {
+public int deactivatePartWithTypeAndTag(KSPPartType partType, String tag) {
     if (activeVessel == null) {
         DriverStation.reportError("Cannot deactivate parts: Active vessel is null.", null);
         return 0;
@@ -363,21 +458,108 @@ public int deactivatePartWithTag(String tag) {
             java.util.List<SpaceCenter.Module> modules = part.getModules();
             
             for (SpaceCenter.Module module : modules) {
-                if (module.getName().equals("ModuleAirbrake")) {
-                    module.setFieldBool("deploy", false);
+                if (module.getName().equals(partType.getModuleName())) {
+                    // Skip deactivation for one-way actions
+                    if (partType == KSPPartType.FAIRING || 
+                        partType == KSPPartType.DECOUPLER || 
+                        partType == KSPPartType.ANCHORED_DECOUPLER ||
+                        partType == KSPPartType.DOCKING_PORT) {
+                        DriverStation.reportWarning(
+                            "Skipping deactivation of " + partType.name() + 
+                            " as it's a one-way action", false);
+                        continue;
+                    }
+                    
+                    module.setFieldBool(partType.getActionField(), false);
                     deactivatedCount++;
+                    if (kDebugging) {
+                        DriverStation.reportWarning("Deactivated " + partType.name() + " with tag: " + tag, false);
+                    }
                     break;
                 }
             }
         }
         
-        if (kDebugging) {
-            DriverStation.reportWarning("Deactivated " + deactivatedCount + " parts with tag: " + tag, false);
-        }
         return deactivatedCount;
     } catch (Exception e) {
         DriverStation.reportError("Failed to deactivate parts with tag " + tag + ": " + e.getMessage(), e.getStackTrace());
         return 0;
+    }
+}
+
+// Get active vessel
+public SpaceCenter.Vessel getActiveVessel() {
+    return activeVessel;
+}
+
+/**
+ * Prints detailed information about all parts on the vessel.
+ * @param debug If true, prints additional debugging information
+ */
+public void printVesselParts(boolean debug) {
+    if (activeVessel == null) {
+        DriverStation.reportError("Cannot list parts: Active vessel is null.", null);
+        return;
+    }
+
+    try {
+        SpaceCenter.Parts partsCollection = activeVessel.getParts();
+        java.util.List<SpaceCenter.Part> allParts = partsCollection.getAll();
+        
+        DriverStation.reportWarning(
+            String.format("=== Vessel Parts Report (%d total parts) ===", 
+            allParts.size()), false);
+
+        for (SpaceCenter.Part part : allParts) {
+            try {
+                String partName = part.getName();
+                java.util.List<SpaceCenter.Module> modules = part.getModules();
+                
+                StringBuilder partInfo = new StringBuilder()
+                    .append("\nPart: ").append(partName)
+                    .append(" (").append(modules.size()).append(" modules)");
+                DriverStation.reportWarning(partInfo.toString(), false);
+
+                if (debug) {
+                    // Print detailed module information
+                    for (SpaceCenter.Module module : modules) {
+                        try {
+                            String moduleName = module.getName();
+                            Map<String, String> fields = module.getFields();
+                            
+                            StringBuilder moduleInfo = new StringBuilder()
+                                .append("  Module: ").append(moduleName)
+                                .append("\n  Fields: ");
+                            
+                            // Convert map to sorted list of field names for consistent output
+                            List<String> fieldNames = new ArrayList<>(fields.keySet());
+                            Collections.sort(fieldNames);
+                            
+                            for (String fieldName : fieldNames) {
+                                moduleInfo.append(fieldName).append(", ");
+                            }
+                            
+                            DriverStation.reportWarning(moduleInfo.toString(), false);
+                        } catch (Exception e) {
+                            DriverStation.reportWarning(
+                                "Failed to get module info: " + e.getMessage(), 
+                                false);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                DriverStation.reportError(
+                    "Failed to process part: " + e.getMessage(), 
+                    false);
+            }
+        }
+        
+        DriverStation.reportWarning("=== End Vessel Parts Report ===", false);
+        
+    } catch (Exception e) {
+        DriverStation.reportError(
+            "Failed to list vessel parts: " + e.getMessage(), 
+            false);
     }
 }
 

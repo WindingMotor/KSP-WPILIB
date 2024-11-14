@@ -37,12 +37,12 @@ public class VelocityTarget extends PIDCommand {
                 if (error < 0) { // Going too fast, need to slow down
                     // Calculate and apply airbrake deployment
                     subsystem.setThrottle(0.0); // Cut throttle when braking
-                    subsystem.activatePartWithTag(AIRBRAKE_TAG);
+                   // subsystem.activatePartWithTag(AIRBRAKE_TAG);
                 } else { // Going too slow, need to speed up
                     // Calculate and clamp throttle (0 to 1)
                     double throttle = Math.min(Math.max(output, 0.0), 1.0);
                     subsystem.setThrottle(throttle);
-                    subsystem.deactivatePartWithTag(AIRBRAKE_TAG);
+                  //  subsystem.deactivatePartWithTag(AIRBRAKE_TAG);
                 }
                 
                 // Publish telemetry
@@ -118,6 +118,6 @@ public class VelocityTarget extends PIDCommand {
     @Override
     public void end(boolean interrupted) {
         rocketSubsystem.setThrottle(0.0);
-        rocketSubsystem.deactivatePartWithTag(AIRBRAKE_TAG);
+       // rocketSubsystem.deactivatePartWithTag(AIRBRAKE_TAG);
     }
 }
