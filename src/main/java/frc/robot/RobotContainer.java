@@ -199,7 +199,7 @@ public class RobotContainer {
 			}),
 			Commands.waitSeconds(1.0),
 			Commands.runOnce(() -> stageDecoupler.decouple()),
-			Commands.waitSeconds(1.0),
+			Commands.waitSeconds(5.0),
 			
 			// Second stage
 			Commands.runOnce(() -> {
